@@ -1,0 +1,36 @@
+{
+  "regles": [
+    {
+      "mots_cles": ["iban"],
+      "type_donnee": "iban",
+      "niveau_sensibilite": "confidentiel",
+      "expose_en_clair": false,
+      "masque_regex": "^FR\\*{2}[A-Z0-9*]+$",
+      "recommandation": "Chiffrer l'IBAN au repos et masquer sa valeur dans les interfaces."
+    },
+    {
+      "mots_cles": ["email", "courriel"],
+      "type_donnee": "email",
+      "niveau_sensibilite": "confidentiel",
+      "expose_en_clair": false,
+      "masque_regex": "^[^@\\s]+\\*+@[^@\\s]+$",
+      "recommandation": "Restreindre l'accès à l'adresse et masquer sa partie locale."
+    },
+    {
+      "mots_cles": ["telephone", "téléphone", "tel"],
+      "type_donnee": "telephone",
+      "niveau_sensibilite": "confidentiel",
+      "expose_en_clair": false,
+      "masque_regex": "^\\+?[0-9* ]{0,4}\\*{3,}[0-9* ]*$",
+      "recommandation": "Restreindre l'accès au numéro et masquer ses chiffres."
+    },
+    {
+      "mots_cles": ["date_naissance", "naissance"],
+      "type_donnee": "date_naissance",
+      "niveau_sensibilite": "sensible",
+      "expose_en_clair": false,
+      "masque_regex": "^\\*{4}-\\*{2}-\\*{2}$",
+      "recommandation": "Limiter l'accès à la date de naissance et la masquer hors usage autorisé."
+    }
+  ]
+}
