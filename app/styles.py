@@ -377,6 +377,33 @@ def inject_css() -> None:
             line-height: 1.25;
             margin-top: .2rem;
         }
+        .governia-bar-row {
+            margin: .9rem 0 1.1rem;
+        }
+        .governia-bar-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: .4rem;
+            color: #334155;
+            font-size: .85rem;
+        }
+        .governia-bar-label strong {
+            color: #15233b;
+            font-variant-numeric: tabular-nums;
+        }
+        .governia-bar-track {
+            width: 100%;
+            height: 9px;
+            overflow: hidden;
+            border-radius: 99px;
+            background: #e8edf5;
+        }
+        .governia-bar-fill {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+        }
         .governia-badge {
             display: inline-flex;
             align-items: center;

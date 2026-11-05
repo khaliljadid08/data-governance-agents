@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -13,6 +14,36 @@ from app.components import badge, kpi_card, section_title
 
 logger = logging.getLogger(__name__)
 _PENALITES = {"faible": 1, "moyenne": 3, "elevee": 6, "haute": 6, "critique": 10}
+_COULEURS_SEVERITE = {
+    "moyenne": "#f59e0b",
+    "elevee": "#ef4444",
+    "haute": "#ef4444",
+    "critique": "#b91c1c",
+}
+
+
+def _afficher_barres(repartition: pd.Series, par_severite: bool = False) -> None:
+    """Affiche une répartition sous forme de barres horizontales simples."""
+    maximum = int(repartition.max())
+    lignes = []
+    for libelle, valeur in repartition.items():
+        nom = str(libelle)
+        nombre = int(valeur)
+        largeur = round(nombre / maximum * 100)
+        couleur = (
+            _COULEURS_SEVERITE.get(nom.casefold(), "#2563eb")
+            if par_severite
+            else "#2563eb"
+        )
+        lignes.append(
+            '<div class="governia-bar-row">'
+            f'<div class="governia-bar-label"><span>{escape(nom)}</span>'
+            f"<strong>{nombre}</strong></div>"
+            '<div class="governia-bar-track">'
+            f'<span class="governia-bar-fill" style="width:{largeur}%;'
+            f"background:{couleur};\"></span></div></div>"
+        )
+    st.markdown("".join(lignes), unsafe_allow_html=True)
 
 
 def _choisir_run(pairs: list[dict]) -> tuple[dict | None, list[dict]]:
@@ -121,10 +152,10 @@ def render() -> None:
         if by_type.empty:
             st.info("Aucune anomalie de qualité pour ce run.")
         else:
-            st.bar_chart(by_type)
+            _afficher_barres(by_type)
     with chart_columns[1]:
         section_title("Anomalies par sévérité")
         if by_severity.empty:
             st.info("Aucune anomalie de qualité pour ce run.")
         else:
-            st.bar_chart(by_severity)
+            _afficher_barres(by_severity, par_severite=True)
