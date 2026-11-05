@@ -5,9 +5,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+from pathlib import Path
+import sys
 
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.gemini_metadata import GeminiMetadataAssistant
 from agents.supervisor import Supervisor
