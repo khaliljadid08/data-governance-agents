@@ -11,6 +11,7 @@ from agents.supervisor import Supervisor
 from app import data_access
 from app.components import afficher_tableau, badge, section_title
 from app.csv_import import cleanup_database
+from ui.components import render_card, render_page_header
 
 
 logger = logging.getLogger(__name__)
@@ -165,8 +166,17 @@ def _afficher_file_validation(supervisor: Supervisor) -> None:
                 ["Data Steward", "Data Owner"],
             )
             comment = st.text_area("Commentaire")
-            validate = st.form_submit_button("Valider", type="primary")
-            reject = st.form_submit_button("Rejeter")
+            accept_column, reject_column = st.columns(2)
+            with accept_column:
+                with st.container(key="validation_accept"):
+                    validate = st.form_submit_button(
+                        "Valider l'analyse", type="primary", width="stretch"
+                    )
+            with reject_column:
+                with st.container(key="validation_reject"):
+                    reject = st.form_submit_button(
+                        "Refuser les résultats", width="stretch"
+                    )
 
         if validate or reject:
             decision = "valide" if validate else "rejete"
@@ -309,9 +319,9 @@ def _afficher_historique() -> None:
 
 def render() -> None:
     """Affiche la validation puis l'historique de gouvernance."""
-    section_title(
-        "Validation",
+    render_page_header(
         "DÉCISION HUMAINE",
+        "Validation",
         "Un Data Steward ou Data Owner examine chaque analyse avant validation.",
     )
     message = st.session_state.pop("flash_validation", None)
@@ -321,5 +331,7 @@ def render() -> None:
     if supervisor is None:
         st.error("Le superviseur n'est pas initialisé.")
         return
-    _afficher_file_validation(supervisor)
-    _afficher_historique()
+    with render_card("validation-review"):
+        _afficher_file_validation(supervisor)
+    with render_card("validation-history"):
+        _afficher_historique()

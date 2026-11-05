@@ -120,8 +120,10 @@ navigation_page = st.navigation(
     list(pages_by_title.values()),
     position="hidden",
 )
+st.session_state["_governia_pages"] = pages_by_title
 st.session_state["page_courante"] = navigation_page.title
-st.session_state["navigation_governia"] = page_labels[navigation_page.title]
+if "navigation_governia" not in st.session_state:
+    st.session_state["navigation_governia"] = page_labels[navigation_page.title]
 
 
 def _naviguer_vers_page() -> None:

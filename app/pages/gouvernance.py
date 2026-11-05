@@ -1,51 +1,22 @@
-"""Consultation des classifications, constats de sécurité, lignage et dictionnaire."""
+"""Consultation des classifications, alertes, lignage et dictionnaire."""
 
 from __future__ import annotations
 
-import json
 import logging
 
 import pandas as pd
 import streamlit as st
 
 from app import data_access
-from app.components import afficher_tableau, badge, section_title
+from ui.components import (
+    render_card,
+    render_page_header,
+    render_table,
+    render_timeline_item,
+)
 
 
 logger = logging.getLogger(__name__)
-
-
-def _echapper_graphviz(value: object) -> str:
-    """Échappe les caractères spéciaux utilisés par Graphviz."""
-    return (
-        str(value or "")
-        .replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", " ")
-    )
-
-
-def _avis_agent(results: list[dict], agent_id: str) -> None:
-    """Présente l'avis consultatif sauvegardé par un agent."""
-    result = next((item for item in results if item["agent"] == agent_id), None)
-    if result is None:
-        return
-    try:
-        details = json.loads(result.get("details_json") or "{}")
-    except (TypeError, json.JSONDecodeError):
-        logger.exception("Les détails de l'agent %s sont illisibles.", agent_id)
-        st.warning("Les détails de l'analyse sont illisibles.")
-        return
-    advice = details.get("avis_gemini")
-    if not isinstance(advice, dict):
-        return
-    with st.expander("Avis consultatif Gemini", expanded=False):
-        if advice.get("statut") == "succes":
-            st.info(advice.get("avis", "Aucun avis retourné."))
-        elif advice.get("statut") == "echec":
-            st.warning(f"Avis Gemini indisponible : {advice.get('erreur', 'erreur inconnue')}")
-        else:
-            st.caption("Gemini est désactivé ; les règles locales restent actives.")
 
 
 def _selected_run(pairs: list[dict]) -> dict | None:
@@ -60,23 +31,36 @@ def _selected_run(pairs: list[dict]) -> dict | None:
     return next(pair for pair in ordered if pair["run"]["id"] == selected_id)
 
 
-def render() -> None:
-    """Affiche les quatre volets de gouvernance d'un run."""
-    section_title(
-        "Gouvernance",
-        "MÉTADONNÉES",
-        "Explorez les classifications, contrôles de sécurité, relations et descriptions.",
-    )
-    try:
-        pairs = data_access.lister_demandes_et_runs(
-            str(data_access.GOVERNANCE_DB)
+def _section_header(kicker: str, title: str, count: int, unit: str) -> None:
+    """Affiche le titre numéroté et le compteur d'une carte de gouvernance."""
+    left, right = st.columns([4, 1], vertical_alignment="center")
+    with left:
+        st.markdown(
+            f'<div class="ui-eyebrow">{kicker}</div>'
+            f'<h2 class="ui-section-card-title">{title}</h2>',
+            unsafe_allow_html=True,
         )
+    with right:
+        st.markdown(
+            f'<div class="ui-header-badge">{count} {unit}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def render() -> None:
+    """Affiche les trois sections de gouvernance et le dictionnaire associé."""
+    try:
+        pairs = data_access.lister_demandes_et_runs(str(data_access.GOVERNANCE_DB))
     except Exception as erreur:
         logger.exception("Impossible de charger les analyses de gouvernance.")
         st.error(f"Impossible de charger les analyses : {erreur}")
         return
     if not pairs:
-        st.info("Aucune analyse lancée. Commencez par importer un fichier.")
+        render_page_header(
+            "MÉTADONNÉES",
+            "Gouvernance",
+            "Aucune analyse lancée. Commencez par importer un fichier.",
+        )
         return
     pair = _selected_run(pairs)
     if pair is None:
@@ -92,100 +76,94 @@ def render() -> None:
             str(data_access.GOVERNANCE_DB), run_id
         )
         edges = data_access.lire_lignage(str(data_access.GOVERNANCE_DB), run_id)
-        dictionary = data_access.lire_dictionnaire(
-            str(data_access.GOVERNANCE_DB)
-        )
         agent_results = data_access.lire_resultats_agents(
             str(data_access.GOVERNANCE_DB), run_id
         )
+        dictionary = data_access.lire_dictionnaire(str(data_access.GOVERNANCE_DB))
     except Exception as erreur:
         logger.exception("Impossible de lire la gouvernance du run %s.", run_id)
         st.error(f"Impossible de lire les résultats de gouvernance : {erreur}")
         return
 
-    classification_tab, security_tab, lineage_tab, dictionary_tab = st.tabs(
-        ["Classification", "Sécurité", "Lignage", "Dictionnaire de données"]
-    )
-    with classification_tab:
-        _avis_agent(agent_results, "classification")
-        afficher_tableau(
-            classifications,
-            "Aucune classification n'est enregistrée pour ce run.",
+    header, action = st.columns([4, 1.5], vertical_alignment="center")
+    with header:
+        render_page_header(
+            "GOUVERNANCE DES DONNÉES",
+            "Classification, sécurité et lignage",
+            f"Résultats du run {run_id}",
+        )
+    with action:
+        dashboard_page = st.session_state.get("_governia_pages", {}).get("Dashboard")
+        if dashboard_page is not None:
+            st.page_link(dashboard_page, label="← Retour au dashboard")
+
+    with render_card(f"classification-{run_id}"):
+        _section_header("01 · CLASSIFICATION", "Nature des colonnes", len(classifications), "colonnes")
+        classification_rows = [
+            (
+                f"{item['table_name']}.{item['column_name']}",
+                str(item["categorie"]).upper(),
+                f"{float(item['confiance'] or 0) * 100:.0f} %",
+            )
+            for item in classifications
+        ]
+        render_table(
+            ["Colonne", "Classification", "Confiance"],
+            classification_rows,
+            badge_columns={1: "category"},
+            empty_message="Aucune classification n'est enregistrée pour ce run.",
         )
 
-    with security_tab:
-        _avis_agent(agent_results, "securisation")
-        non_compliant = [
-            item for item in findings if not bool(item["conforme_regle_acces"])
+    with render_card(f"security-{run_id}"):
+        _section_header("02 · SÉCURITÉ", "Alertes et recommandations", len(findings), "alertes")
+        security_rows = [
+            (
+                f"{item['table_name']}.{item['column_name']}",
+                str(item["type_donnee"]).upper(),
+                item["recommandation"] or "—",
+                "Conforme" if bool(item["conforme_regle_acces"]) else "Non conforme",
+            )
+            for item in findings
         ]
-        left, right = st.columns(2)
-        left.metric("Colonnes sensibles", len(findings))
-        right.metric("Non conformes", len(non_compliant))
-        if not findings:
-            st.info("Aucun constat de sécurité n'est enregistré pour ce run.")
-        else:
-            for item in findings:
-                columns = st.columns([1.5, 1.5, 1.4, 1.3, 3.3])
-                columns[0].write(f"**{item['table_name']}**")
-                columns[1].write(item["column_name"])
-                columns[2].write(item["type_donnee"])
-                with columns[3]:
-                    badge(
-                        "conforme" if bool(item["conforme_regle_acces"]) else "non conforme",
-                        "Conforme" if bool(item["conforme_regle_acces"]) else "Non conforme",
-                    )
-                columns[4].write(item["recommandation"] or "—")
+        render_table(
+            ["Colonne", "Type d'alerte", "Recommandation", "Conformité"],
+            security_rows,
+            badge_columns={3: "compliance"},
+            empty_message="Aucune alerte de sécurité n'est enregistrée pour ce run.",
+        )
 
-    with lineage_tab:
-        _avis_agent(agent_results, "lignage")
+    with render_card(f"lineage-{run_id}"):
+        _section_header("03 · LIGNAGE", "Relations détectées", len(edges), "relations")
         if not edges:
             st.info("Aucune relation de lignage n'est enregistrée pour ce run.")
         else:
-            tables = sorted(
-                {
-                    str(node)
-                    for edge in edges
-                    for node in (edge["source_table"], edge["target_table"])
-                }
+            lineage_result = next(
+                (item for item in agent_results if item["agent"] == "lignage"),
+                {},
             )
-            node_ids = {name: f"table_{index}" for index, name in enumerate(tables)}
-            graph = ["digraph lignage {", "rankdir=LR;", "node [shape=box];"]
-            for name in tables:
-                graph.append(
-                    f'{node_ids[name]} [label="{_echapper_graphviz(name)}"];'
-                )
+            recorded_at = str(lineage_result.get("created_at") or "")
             for edge in edges:
-                label = (
-                    f"{edge['source_column'] or '*'} → "
-                    f"{edge['target_column'] or '*'} ({edge['type_relation']})"
+                source_column = edge.get("source_column") or "*"
+                target_column = edge.get("target_column") or "*"
+                render_timeline_item(
+                    str(edge["type_relation"]),
+                    f"{edge['source_table']}.{source_column} → "
+                    f"{edge['target_table']}.{target_column}",
+                    recorded_at,
                 )
-                graph.append(
-                    f'{node_ids[edge["source_table"]]} -> '
-                    f'{node_ids[edge["target_table"]]} '
-                    f'[label="{_echapper_graphviz(label)}"];'
-                )
-            graph.append("}")
-            st.graphviz_chart("\n".join(graph), width="stretch")
-            afficher_tableau(edges)
+            st.caption("Horodatage de l'enregistrement des résultats de l'agent.")
 
-    with dictionary_tab:
         perimeter = {
             table.strip()
             for table in str((pair.get("request") or {}).get("perimetre", "")).split(",")
             if table.strip()
         }
-        entries = [
-            item
-            for item in dictionary
-            if item["table_name"] in perimeter
-        ]
-        filter_columns = st.columns([2, 1])
-        with filter_columns[0]:
+        entries = [item for item in dictionary if item["table_name"] in perimeter]
+        with st.expander(f"Dictionnaire de données · {len(entries)} colonnes"):
             query = st.text_input(
                 "Rechercher une table, une colonne ou une description",
                 key=f"dictionary_query_{run_id}",
             ).casefold()
-        with filter_columns[1]:
             sensitivities = sorted(
                 {str(item.get("sensibilite") or "public") for item in entries}
             )
@@ -194,31 +172,42 @@ def render() -> None:
                 ["Toutes", *sensitivities],
                 key=f"dictionary_sensitivity_{run_id}",
             )
-        filtered = [
-            item
-            for item in entries
-            if (
-                not query
-                or query
-                in " ".join(
-                    str(item.get(key) or "")
-                    for key in ("table_name", "column_name", "description")
-                ).casefold()
+            filtered = [
+                item
+                for item in entries
+                if (
+                    not query
+                    or query
+                    in " ".join(
+                        str(item.get(key) or "")
+                        for key in ("table_name", "column_name", "description")
+                    ).casefold()
+                )
+                and (
+                    sensitivity == "Toutes"
+                    or item.get("sensibilite") == sensitivity
+                )
+            ]
+            render_table(
+                ["Table", "Colonne", "Description", "Type SQL", "Catégorie", "Sensibilité"],
+                [
+                    (
+                        item["table_name"],
+                        item["column_name"],
+                        item.get("description"),
+                        item.get("type_sql"),
+                        item.get("categorie"),
+                        item.get("sensibilite"),
+                    )
+                    for item in filtered
+                ],
+                empty_message="Aucune entrée ne correspond à la recherche.",
             )
-            and (
-                sensitivity == "Toutes"
-                or item.get("sensibilite") == sensitivity
-            )
-        ]
-        afficher_tableau(filtered, "Aucune entrée de dictionnaire ne correspond.")
-        if filtered:
-            csv_data = pd.DataFrame(filtered).to_csv(
-                index=False,
-                encoding="utf-8-sig",
-            )
-            st.download_button(
-                "Exporter le dictionnaire en CSV",
-                csv_data,
-                file_name=f"govern-ia-dictionnaire-run-{run_id}.csv",
-                mime="text/csv",
-            )
+            if filtered:
+                dataframe = pd.DataFrame(filtered)
+                st.download_button(
+                    "Télécharger le dictionnaire CSV",
+                    dataframe.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"dictionnaire_run_{run_id}.csv",
+                    mime="text/csv",
+                )
